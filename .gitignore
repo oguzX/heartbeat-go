@@ -1,0 +1,26 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build output
+bin/
+dist/
+*.exe
+*.out
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
