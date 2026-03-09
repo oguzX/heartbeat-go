@@ -8,15 +8,15 @@ import (
 	"github.com/oguzx/devpulse/internal/domain"
 )
 
-type HeartBeatRepository struct {
+type HeartbeatRepository struct {
 	db *pgxpool.Pool
 }
 
-func NewHeartbeatRepository(db *pgxpool.Pool) *HeartBeatRepository {
-	return &HeartBeatRepository{db: db}
+func NewHeartbeatRepository(db *pgxpool.Pool) *HeartbeatRepository {
+	return &HeartbeatRepository{db: db}
 }
 
-func (r *HeartBeatRepository) Create(
+func (r *HeartbeatRepository) Create(
 	ctx context.Context,
 	serviceID int64,
 	sourceIP *string,

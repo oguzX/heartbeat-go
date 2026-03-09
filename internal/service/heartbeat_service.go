@@ -14,20 +14,23 @@ import (
 
 type HeartbeatService struct {
 	serviceRepo   *repository.ServiceRepository
-	heartBeatRepo *repository.HeartBeatRepository
+	heartbeatRepo *repository.HeartbeatRepository
+	incidentRepo  *repository.IncidentRepository
 }
 
-func NewHeathBeatService(
+func NewHeartbeatService(
 	serviceRepo *repository.ServiceRepository,
-	heartbeatRepo *repository.HeartBeatRepository,
+	heartbeatRepo *repository.HeartbeatRepository,
+	incidentRepo *repository.IncidentRepository,
 ) *HeartbeatService {
 	return &HeartbeatService{
 		serviceRepo:   serviceRepo,
-		heartBeatRepo: heartbeatRepo,
+		heartbeatRepo: heartbeatRepo,
+		incidentRepo:  incidentRepo,
 	}
 }
 
-type IngestHeatbeatInput struct {
+type IngestHeartbeatInput struct {
 	ServiceKey string          `json:"service_key"`
 	Meta       json.RawMessage `json:"meta"`
 }
@@ -39,12 +42,12 @@ type IngestHeartbeatResult struct {
 
 func (s *HeartbeatService) Ingest(
 	ctx context.Context,
-	input IngestHeatbeatInput,
+	input IngestHeartbeatInput,
 	r *http.Request,
 ) (*IngestHeartbeatResult, error) {
 	serviceKey := strings.TrimSpace(input.ServiceKey)
-	if serviceKey != "" {
-		return nil, fmt.Errorf("service_key not found")
+	if serviceKey == "" {
+		return nil, fmt.Errorf("service_key is required")
 	}
 
 	service, err := s.serviceRepo.FindByAPIKey(ctx, serviceKey)
@@ -59,14 +62,19 @@ func (s *HeartbeatService) Ingest(
 	if len(meta) == 0 {
 		meta = json.RawMessage(`{}`)
 	}
+
 	sourceIP := extractClientIP(r)
 
-	heartbeat, err := s.heartBeatRepo.Create(ctx, service.ID, sourceIP, meta)
+	heartbeat, err := s.heartbeatRepo.Create(ctx, service.ID, sourceIP, meta)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := s.serviceRepo.MarkHealthy(ctx, service.ID); err != nil {
+		return nil, err
+	}
+
+	if err := s.incidentRepo.ResolveOpenByServiceID(ctx, service.ID); err != nil {
 		return nil, err
 	}
 

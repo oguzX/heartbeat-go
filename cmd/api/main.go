@@ -15,37 +15,43 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
+	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("Failed to load config", "error", err)
+		logger.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
 
 	dbPool, err := db.NewPool(ctx, cfg)
-
 	if err != nil {
-		slog.Error("Failed to connect to db", "error", err)
+		logger.Error("failed to connect database", "error", err)
+		os.Exit(1)
 	}
-
 	defer dbPool.Close()
 
-	router := routes.NewRouter(dbPool)
+	app := routes.NewApp(dbPool, logger)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,
-		Handler:           router,
+		Handler:           app.Router,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
+	go app.Evaluator.Run(appCtx, 15*time.Second)
+
 	go func() {
-		slog.Info("Server has started at", "port", cfg.AppPort)
+		logger.Info("server started", "port", cfg.AppPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server failed", "error", err)
+			logger.Error("server failed", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -54,15 +60,17 @@ func main() {
 	defer stop()
 
 	<-stopCtx.Done()
-	slog.Info("shutdown signal recieved")
+	logger.Info("shutdown signal received")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	cancelApp()
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		slog.Error("Graceful shutdown failed", "error", err)
+		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("server stoped")
+	logger.Info("server stopped")
 }

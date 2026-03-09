@@ -189,3 +189,67 @@ func (r *ServiceRepository) MarkHealthy(ctx context.Context, serviceID int64) er
 	_, err := r.db.Exec(ctx, query, serviceID, domain.ServiceStatusHealthy)
 	return err
 }
+
+func (r *ServiceRepository) MarkDown(ctx context.Context, serviceID int64) error {
+	query := `
+		UPDATE services
+		SET
+			status = $2,
+			updated_at = NOW()
+		WHERE id = $1
+	`
+
+	_, err := r.db.Exec(ctx, query, serviceID, domain.ServiceStatusDown)
+	return err
+}
+
+func (r *ServiceRepository) FindAllForEvaluation(ctx context.Context) ([]domain.Service, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			slug,
+			api_key,
+			expected_interval_seconds,
+			grace_seconds,
+			status,
+			last_heartbeat_at,
+			created_at,
+			updated_at
+		FROM services
+		ORDER BY id ASC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	services := make([]domain.Service, 0)
+	for rows.Next() {
+		var service domain.Service
+		if err := rows.Scan(
+			&service.ID,
+			&service.Name,
+			&service.Slug,
+			&service.APIKey,
+			&service.ExpectedIntervalSeconds,
+			&service.GraceSeconds,
+			&service.Status,
+			&service.LastHeartbeatAt,
+			&service.CreatedAt,
+			&service.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		services = append(services, service)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return services, nil
+}

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,19 +13,27 @@ import (
 	appservice "github.com/oguzx/devpulse/internal/service"
 )
 
-func NewRouter(db *pgxpool.Pool) http.Handler {
+type AppDependencies struct {
+	Router    http.Handler
+	Evaluator *appservice.EvaluatorService
+}
+
+func NewApp(db *pgxpool.Pool, logger *slog.Logger) *AppDependencies {
 	r := chi.NewRouter()
 
 	healthHandler := handlers.NewHealthHandler(db)
 
 	serviceRepo := repository.NewServiceRepository(db)
 	heartbeatRepo := repository.NewHeartbeatRepository(db)
+	incidentRepo := repository.NewIncidentRepository(db)
 
 	serviceService := appservice.NewServiceService(serviceRepo)
-	heartbeatService := appservice.NewHeathBeatService(serviceRepo, heartbeatRepo)
+	heartbeatService := appservice.NewHeartbeatService(serviceRepo, heartbeatRepo, incidentRepo)
+	evaluatorService := appservice.NewEvaluatorService(serviceRepo, incidentRepo, logger)
 
 	serviceHandler := handlers.NewServiceHandler(serviceService)
 	heartbeatHandler := handlers.NewHeartbeatHandler(heartbeatService)
+	incidentHandler := handlers.NewIncidentHandler(incidentRepo)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -54,7 +63,11 @@ func NewRouter(db *pgxpool.Pool) http.Handler {
 		})
 
 		r.Post("/heartbeats", heartbeatHandler.Ingest)
+		r.Get("/incidents", incidentHandler.List)
 	})
 
-	return r
+	return &AppDependencies{
+		Router:    r,
+		Evaluator: evaluatorService,
+	}
 }
